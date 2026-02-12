@@ -1,0 +1,123 @@
+// ==UserScript==
+// @name         Weeding Reports - Shortcut Keys & Auto-Click
+// @namespace    http://tampermonkey.net/
+// @version      1.7
+// @description  Shortcut keys Q-P for case types, dispatch click for radio, and countdown refresh
+// @author       Assistant
+// @match        http://10.145.22.11:8888/weeding_reports.php
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    const caseMapping = [
+        { key: 'q', type: 'CWP' }, { key: 'w', type: 'CRM-M' }, { key: 'e', type: 'CR' },
+        { key: 'r', type: 'RFA' }, { key: 't', type: 'RSA' }, { key: 'y', type: 'CRR' },
+        { key: 'u', type: 'CRA-S' }, { key: 'i', type: 'FAO' }, { key: 'o', type: 'CM' },
+        { key: 'p', type: 'CRM' }
+    ];
+
+    // 1. Force Click "Case wise" via DispatchEvent
+    function triggerCaseWise() {
+        const radio = document.getElementById('p_type2');
+        if (radio) {
+            radio.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        }
+    }
+
+    // 2. Inject Buttons with visible shortcut hints
+    const injectButtons = () => {
+        const caseWiseDiv = document.getElementById('case_wise');
+        if (!caseWiseDiv || document.getElementById('custom-btn-container')) return;
+
+        const btnContainer = document.createElement('div');
+        btnContainer.id = 'custom-btn-container';
+        btnContainer.style = 'margin-bottom: 15px; padding: 10px; background: #eef2f7; border: 1px solid #337ab7; border-radius: 5px; text-align: center;';
+
+        const select = document.querySelector('select[name="t_case_type"]');
+
+        caseMapping.forEach(item => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            // Show both the Key and the Case Type
+            btn.innerHTML = `<span style="color:red; font-size:10px; display:block;">[${item.key.toUpperCase()}]</span>${item.type}`;
+            btn.className = 'btn btn-sm';
+            btn.style = 'margin: 2px; border: 1px solid #337ab7; cursor: pointer; background: white; font-weight: bold; min-width: 60px;';
+            btn.id = `btn-shortcut-${item.key}`;
+
+            btn.onclick = () => {
+                if (select) {
+                    select.value = item.type;
+                    btnContainer.querySelectorAll('button').forEach(b => b.style.background = 'white');
+                    btn.style.background = '#bad1e9';
+                    document.getElementById('t_case_no').focus();
+                }
+            };
+            btnContainer.appendChild(btn);
+        });
+        caseWiseDiv.prepend(btnContainer);
+    };
+
+    // 3. Countdown Timer
+    const timerDiv = document.createElement('div');
+    timerDiv.style = 'position: fixed; top: 0; left: 0; width: 100%; background: #d9534f; color: white; text-align: center; padding: 10px; display: none; z-index: 99999; font-weight: bold; font-size: 20px; border-bottom: 3px solid #000;';
+    document.body.appendChild(timerDiv);
+
+    function startCountdown(seconds) {
+        let timeLeft = seconds;
+        timerDiv.style.display = 'block';
+        const interval = setInterval(() => {
+            timerDiv.innerHTML = `REPORT GENERATED. REFRESHING IN ${timeLeft}s...`;
+            if (timeLeft-- <= 0) {
+                clearInterval(interval);
+                window.location.reload();
+            }
+        }, 1000);
+    }
+
+    // 4. Global Keyboard Listener
+    document.addEventListener('keydown', function(e) {
+        const key = e.key.toLowerCase();
+        const active = document.activeElement;
+        const isInput = active.tagName === 'INPUT' || active.tagName === 'SELECT';
+
+        // Shortcut Keys (Q-P) - Only trigger if NOT currently typing in a box
+        if (!isInput) {
+            const match = caseMapping.find(m => m.key === key);
+            if (match) {
+                e.preventDefault();
+                document.getElementById(`btn-shortcut-${key}`).click();
+                return;
+            }
+        }
+
+        // Arrow Navigation
+        if (key === 'arrowright' && active.id === 't_case_no') {
+            document.getElementById('t_case_year').focus();
+        } else if (key === 'arrowleft' && active.id === 't_case_year') {
+            document.getElementById('t_case_no').focus();
+        }
+
+        // Enter to Report
+        if (key === 'enter') {
+            const reportBtn = document.querySelector('#case_wise button.btn-success');
+            if (reportBtn) {
+                e.preventDefault();
+                reportBtn.click();
+                startCountdown(3);
+            }
+        }
+    });
+
+    // Run Logic
+    window.addEventListener('load', () => {
+        triggerCaseWise();
+        injectButtons();
+        setTimeout(() => document.getElementById('t_case_no')?.focus(), 500);
+    });
+
+    // Re-check periodically to ensure "Case wise" stays active
+    setInterval(triggerCaseWise, 2000);
+
+})();
