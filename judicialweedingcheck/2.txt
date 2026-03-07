@@ -1,0 +1,148 @@
+// ==UserScript==
+// @name         Dynamic Search Term Highlighter - Pro Version
+// @namespace    http://tampermonkey.net/
+// @version      3.0
+// @description  Fuzzy highlights multiple terms and auto-scrolls to unique matches.
+// @author       Gemini
+// @match        *://*/*
+// @match        http://10.145.22.11:8888/*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // --- Configuration ---
+    const HIGHLIGHT_COLOR_1 = 'lightgreen';
+    const HIGHLIGHT_COLOR_2 = 'yellow';
+    const ROW_HIGHLIGHT_COLOR = '#ffddaa';
+    const HIGHLIGHT_CLASS = 'tampermonkey-highlight';
+    const ROW_HIGHLIGHT_CLASS = 'tampermonkey-row-highlight';
+    // ---------------------
+
+    function createUI() {
+        const container = document.createElement('div');
+        container.id = 'tampermonkey-highlighter-ui';
+        container.style.cssText = `
+            position: fixed; top: 10px; right: 10px; z-index: 999999;
+            padding: 10px; background-color: #f0f0f0; border: 2px solid #007bff;
+            border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            font-family: Arial, sans-serif; display: flex; flex-direction: column; gap: 8px;
+        `;
+
+        const input1 = createInput('Search term 1 (e.g. B . NO 24)');
+        const input2 = createInput('Search term 2...');
+        
+        const button = document.createElement('button');
+        button.textContent = 'Highlight & Locate';
+        button.style.cssText = `padding: 8px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;`;
+
+        container.appendChild(input1);
+        container.appendChild(input2);
+        container.appendChild(button);
+        document.body.appendChild(container);
+
+        const highlightHandler = () => {
+            removeHighlights();
+            const count1 = applyHighlights(input1.value.trim(), HIGHLIGHT_COLOR_1);
+            const count2 = applyHighlights(input2.value.trim(), HIGHLIGHT_COLOR_2);
+            
+            // Auto-scroll logic: if exactly one match is found for either search
+            if (count1 === 1 || count2 === 1) {
+                const firstMatch = document.querySelector(`.${HIGHLIGHT_CLASS}`);
+                if (firstMatch) {
+                    firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        };
+
+        button.addEventListener('click', highlightHandler);
+        [input1, input2].forEach(el => {
+            el.addEventListener('keydown', (e) => { if (e.key === 'Enter') highlightHandler(); });
+        });
+    }
+
+    function createInput(placeholder) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = placeholder;
+        input.style.cssText = `width: 220px; padding: 6px; border: 1px solid #aaa; border-radius: 4px;`;
+        return input;
+    }
+
+    function applyRowHighlightStyle() {
+        const style = document.createElement('style');
+        style.textContent = `
+            tr.${ROW_HIGHLIGHT_CLASS} { background-color: ${ROW_HIGHLIGHT_COLOR} !important; }
+            .${HIGHLIGHT_CLASS} { border-radius: 2px; padding: 0px 2px; color: black; font-weight: bold; border: 1px solid rgba(0,0,0,0.1); }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function removeHighlights() {
+        document.querySelectorAll(`.${HIGHLIGHT_CLASS}`).forEach(span => {
+            const parent = span.parentNode;
+            parent.replaceChild(document.createTextNode(span.textContent), span);
+            parent.normalize();
+        });
+    }
+
+    /**
+     * Improved Regex: Escapes specials and converts spaces into "flexible whitespace" (\s+)
+     */
+    function getFuzzyRegex(term) {
+        if (!term) return null;
+        // Escape regex special chars
+        let escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Replace spaces with a regex that allows any amount of whitespace
+        let fuzzy = escaped.replace(/\s+/g, '\\s+');
+        return new RegExp('(' + fuzzy + ')', 'gi');
+    }
+
+    function applyHighlights(searchTerm, color) {
+        const regex = getFuzzyRegex(searchTerm);
+        if (!regex) return 0;
+
+        let matchCount = 0;
+        // Target all visible text-bearing elements
+        const elements = document.querySelectorAll('td, th, p, span, div');
+        
+        elements.forEach(el => {
+            // Only process elements that actually contain the text and have no children (deepest nodes)
+            if (el.children.length === 0 && regex.test(el.textContent)) {
+                const originalText = el.textContent;
+                const matchesInNode = originalText.match(regex);
+                if (matchesInNode) {
+                    matchCount += matchesInNode.length;
+                    el.innerHTML = originalText.replace(regex, `<span class="${HIGHLIGHT_CLASS}" style="background-color: ${color};">$1</span>`);
+                }
+            }
+        });
+        return matchCount;
+    }
+
+    function setupRowHighlighting() {
+        // Listen for checkbox changes globally (delegation)
+        document.addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox') {
+                const row = e.target.closest('tr');
+                if (row) {
+                    if (e.target.checked) row.classList.add(ROW_HIGHLIGHT_CLASS);
+                    else row.classList.remove(ROW_HIGHLIGHT_CLASS);
+                }
+            }
+        });
+    }
+
+    const init = () => {
+        applyRowHighlightStyle();
+        createUI();
+        setupRowHighlighting();
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
