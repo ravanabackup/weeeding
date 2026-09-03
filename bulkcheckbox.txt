@@ -1,0 +1,95 @@
+// ==UserScript==
+// @name         Auto Select Checkbox Range with Exclusions
+// @namespace    http://tampermonkey.net/
+// @version      1.2
+// @description  Select initial and final checkbox to check all main row checkboxes in between, ignoring 'Same for all' checkboxes.
+// @author       You
+// @match        *://*/*
+// @grant        none
+// ==UserScript==
+
+(function() {
+    'use strict';
+
+    let isEnabled = true;
+    let lastChecked = null;
+
+    // Create floating toggle button
+    const toggleBtn = document.createElement('button');
+    toggleBtn.innerHTML = 'Checkbox Range: <b>ON</b>';
+    Object.assign(toggleBtn.style, {
+        position: 'fixed',
+        top: '15px',
+        right: '15px',
+        zIndex: '999999',
+        padding: '8px 12px',
+        backgroundColor: '#4CAF50',
+        color: '#fff',
+        border: 'none',
+        borderRadius: '5px',
+        cursor: 'pointer',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+        fontSize: '13px',
+        fontFamily: 'sans-serif'
+    });
+
+    // Toggle button click handler
+    toggleBtn.addEventListener('click', function() {
+        isEnabled = !isEnabled;
+        if (isEnabled) {
+            toggleBtn.innerHTML = 'Checkbox Range: <b>ON</b>';
+            toggleBtn.style.backgroundColor = '#4CAF50';
+        } else {
+            toggleBtn.innerHTML = 'Checkbox Range: <b>OFF</b>';
+            toggleBtn.style.backgroundColor = '#f44336';
+            lastChecked = null;
+        }
+    });
+
+    // Helper to determine if a checkbox should be processed
+    function isMainCheckbox(cb) {
+        // Exclude inputs with 'Same for all' or 'All' nearby in text, label, or name attributes
+        const parentCellText = cb.parentElement ? cb.parentElement.textContent.toLowerCase() : '';
+        const nameAttr = (cb.name || '').toLowerCase();
+        const idAttr = (cb.id || '').toLowerCase();
+
+        if (parentCellText.includes('same for all') || parentCellText.includes('all') ||
+            nameAttr.includes('same') || idAttr.includes('same')) {
+            return false;
+        }
+        return true;
+    }
+
+    document.body.appendChild(toggleBtn);
+
+    // Checkbox click event handler
+    document.addEventListener('click', function(e) {
+        if (!isEnabled) return;
+
+        const target = e.target;
+
+        if (target && target.type === 'checkbox' && isMainCheckbox(target)) {
+            // Get all checkboxes on the page that are valid main row checkboxes
+            const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]'))
+                                    .filter(isMainCheckbox);
+
+            if (lastChecked && (e.shiftKey || lastChecked !== target)) {
+                let start = checkboxes.indexOf(target);
+                let end = checkboxes.indexOf(lastChecked);
+
+                if (start !== -1 && end !== -1) {
+                    const sliceStart = Math.min(start, end);
+                    const sliceEnd = Math.max(start, end);
+
+                    const targetState = target.checked;
+                    for (let i = sliceStart; i <= sliceEnd; i++) {
+                        checkboxes[i].checked = targetState;
+                        checkboxes[i].dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+            }
+
+            lastChecked = target;
+        }
+    });
+})();
