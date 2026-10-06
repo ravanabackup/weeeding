@@ -1,0 +1,191 @@
+// ==UserScript==
+// @name         High Court Catalogue Table Filter
+// @namespace    Sajin M. Simon
+// @version      1.4
+// @description  Filter catalogue rows by exact match, full strings, or text search
+// @author       Sajin M. Simon
+// @match        *://10.145.22.38:3030/rkj-cataloguing/add-catalogue*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    function createFilterUI() {
+        if (document.getElementById('custom-table-filter-ui')) return;
+
+        const container = document.createElement('div');
+        container.id = 'custom-table-filter-ui';
+        Object.assign(container.style, {
+            position: 'fixed',
+            bottom: '10px',
+            right: '20px',
+            zIndex: '9999',
+            backgroundColor: '#ffffff',
+            padding: '10px 14px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+            border: '1px solid #ddd',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontFamily: 'sans-serif',
+            fontSize: '13px'
+        });
+
+        const label = document.createElement('label');
+        label.textContent = 'Filter Approved By:';
+        label.style.fontWeight = 'bold';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = 'approved-by-filter-input';
+        input.placeholder = 'e.g., WEEDU14 19-Sep-26';
+        Object.assign(input.style, {
+            padding: '6px 10px',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            outline: 'none',
+            fontSize: '13px',
+            width: '180px'
+        });
+
+        const exactCheckboxLabel = document.createElement('label');
+        exactCheckboxLabel.style.display = 'flex';
+        exactCheckboxLabel.style.alignItems = 'center';
+        exactCheckboxLabel.style.gap = '4px';
+        exactCheckboxLabel.style.cursor = 'pointer';
+
+        const exactCheckbox = document.createElement('input');
+        exactCheckbox.type = 'checkbox';
+        exactCheckbox.id = 'exact-match-checkbox';
+        exactCheckbox.checked = true;
+
+        exactCheckboxLabel.appendChild(exactCheckbox);
+        exactCheckboxLabel.appendChild(document.createTextNode('Exact match'));
+
+        const countBadge = document.createElement('span');
+        countBadge.id = 'filter-count-badge';
+        Object.assign(countBadge.style, {
+            fontSize: '12px',
+            color: '#555',
+            marginLeft: '6px'
+        });
+
+        const clearBtn = document.createElement('button');
+        clearBtn.textContent = '✕';
+        Object.assign(clearBtn.style, {
+            border: 'none',
+            background: '#f0f0f0',
+            cursor: 'pointer',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontWeight: 'bold',
+            color: '#666'
+        });
+
+        let observer = null;
+
+        function applyFilter() {
+            if (observer) observer.disconnect();
+
+            // Normalize search query (collapse multiple spaces, trim, uppercase)
+            const query = input.value.trim().replace(/\s+/g, ' ').toUpperCase();
+            const isExact = exactCheckbox.checked;
+            const rows = document.querySelectorAll('table tbody tr');
+
+            if (!rows.length) {
+                reconnectObserver();
+                return;
+            }
+
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const cells = row.children;
+                if (!cells.length) return;
+
+                if (!query) {
+                    row.style.display = '';
+                    visibleCount++;
+                    return;
+                }
+
+                // Get Approved By cell content (Column index 6 = 7th column)
+                const cellText = (cells[6] ? cells[6].textContent : row.textContent)
+                    .trim()
+                    .replace(/\s+/g, ' ')
+                    .toUpperCase();
+
+                // Extract single ID code if present (e.g., WEEDU14 from WEEDU14 19-Sep-26)
+                const codeMatch = cellText.match(/[A-Z0-9]+/i);
+                const extractedCode = codeMatch ? codeMatch[0].toUpperCase() : cellText;
+
+                let matches = false;
+
+                if (isExact) {
+                    // Exact match handles:
+                    // 1. Complete string match (e.g. "WEEDU14 19-SEP-26" === "WEEDU14 19-SEP-26")
+                    // 2. Short ID query match (e.g. query "WEEDU14" matches extracted code "WEEDU14")
+                    matches = (cellText === query) || (extractedCode === query);
+                } else {
+                    matches = cellText.includes(query);
+                }
+
+                if (matches) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            countBadge.textContent = query ? `(${visibleCount} visible)` : '';
+
+            reconnectObserver();
+        }
+
+        let debounceTimer;
+        function debouncedApplyFilter() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(applyFilter, 150);
+        }
+
+        function reconnectObserver() {
+            const table = document.querySelector('table');
+            if (table && observer) {
+                observer.observe(table, { childList: true, subtree: true });
+            }
+        }
+
+        input.addEventListener('input', debouncedApplyFilter);
+        exactCheckbox.addEventListener('change', applyFilter);
+        clearBtn.addEventListener('click', () => {
+            input.value = '';
+            applyFilter();
+            input.focus();
+        });
+
+        container.appendChild(label);
+        container.appendChild(input);
+        container.appendChild(exactCheckboxLabel);
+        container.appendChild(clearBtn);
+        container.appendChild(countBadge);
+
+        document.body.appendChild(container);
+
+        observer = new MutationObserver(() => {
+            if (input.value.trim()) {
+                debouncedApplyFilter();
+            }
+        });
+
+        reconnectObserver();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', createFilterUI);
+    } else {
+        setTimeout(createFilterUI, 1000);
+    }
+})();
