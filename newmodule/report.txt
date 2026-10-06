@@ -1,0 +1,368 @@
+// ==UserScript==
+// @name         Weeding Catalogue Report Complete Automator
+// @namespace    Sajin M. Simon
+// @version      2.0
+// @description  Automates selections in weeding catalogue report page with dark mode UI (Press "\" to activate)
+// @author       Sajin M. Simon
+// @match        *://10.145.22.38:3030/rkj-cataloguing/report*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    let scriptActivated = false;
+
+    function initScript() {
+        if (scriptActivated) return;
+        scriptActivated = true;
+
+        console.log('Weeding Catalogue Report Automator activated!');
+
+        // Show activation notification
+        const activationNotification = document.createElement('div');
+        activationNotification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #4CAF50;
+            color: white;
+            padding: 14px 22px;
+            border-radius: 8px;
+            z-index: 10001;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+        `;
+        activationNotification.textContent = 'Weeding Catalogue Report Automator Activated!';
+        document.body.appendChild(activationNotification);
+
+        setTimeout(() => {
+            activationNotification.remove();
+        }, 2000);
+
+        let highestBatch = '';
+        let highestRack = '';
+        let highestShelf = '';
+        const YOUR_NAME = 'Sajin Report';
+
+        function updateTitle() {
+            const numbers = [highestBatch, highestRack, highestShelf]
+                .filter(num => num !== '')
+                .join(' | ');
+            document.title = numbers ? `${YOUR_NAME} - ${numbers}` : YOUR_NAME;
+        }
+
+        // Dark mode styles
+        const style = document.createElement('style');
+        style.textContent = `
+            body {
+                background-color: #121212 !important;
+                color: #e0e0e0 !important;
+            }
+
+            .control-panel {
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                z-index: 9999;
+                background-color: #1e1e1e;
+                padding: 18px;
+                border-radius: 12px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+                width: 280px;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                border: 1px solid #333;
+            }
+
+            .control-panel-header {
+                font-size: 15px;
+                font-weight: 600;
+                color: #fff;
+                margin-bottom: 12px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .control-panel input {
+                width: 100%;
+                padding: 10px;
+                border: 1px solid #404040;
+                border-radius: 6px;
+                background-color: #2a2a2a;
+                color: #fff;
+                margin-bottom: 10px;
+                font-size: 13px;
+                box-sizing: border-box;
+            }
+
+            .control-panel button {
+                width: 100%;
+                padding: 10px;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 500;
+                margin-bottom: 8px;
+                box-sizing: border-box;
+                transition: background-color 0.2s;
+            }
+
+            .primary-button {
+                background-color: #1976d2 !important;
+                color: white !important;
+            }
+
+            .primary-button:hover {
+                background-color: #1565c0 !important;
+            }
+
+            .secondary-button {
+                background-color: #333333 !important;
+                color: #fff !important;
+            }
+
+            .secondary-button:hover {
+                background-color: #424242 !important;
+            }
+
+            .status-indicator {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background-color: #4CAF50;
+                display: inline-block;
+            }
+        `;
+        document.head.appendChild(style);
+
+        function getSelectByLabelText(labelText) {
+            const labels = Array.from(document.querySelectorAll('label, span, div'));
+            const targetLabel = labels.find(el => el.textContent.trim().toLowerCase().includes(labelText.toLowerCase()));
+            if (!targetLabel) return null;
+
+            let parent = targetLabel.parentElement;
+            for (let i = 0; i < 3; i++) {
+                if (!parent) break;
+                const select = parent.querySelector('select');
+                if (select) return select;
+                parent = parent.parentElement;
+            }
+            return null;
+        }
+
+        function waitForOptions(selectElement) {
+            return new Promise(resolve => {
+                if (selectElement && selectElement.options.length > 1) {
+                    return resolve();
+                }
+
+                let attempts = 0;
+                const interval = setInterval(() => {
+                    attempts++;
+                    if ((selectElement && selectElement.options.length > 1) || attempts > 20) {
+                        clearInterval(interval);
+                        resolve();
+                    }
+                }, 250);
+            });
+        }
+
+        function triggerChangeEvent(element) {
+            if (!element) return;
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        function selectHighestNumber(selectElement, type) {
+            if (!selectElement) return null;
+
+            const options = Array.from(selectElement.options);
+            if (options.length <= 1) return null;
+
+            const numbers = options
+                .slice(1)
+                .map(opt => parseInt(opt.value || opt.textContent, 10))
+                .filter(num => !isNaN(num));
+
+            if (numbers.length > 0) {
+                const highestNumber = Math.max(...numbers);
+
+                const targetOpt = options.find(opt =>
+                    parseInt(opt.value || opt.textContent, 10) === highestNumber
+                );
+
+                if (targetOpt) {
+                    selectElement.value = targetOpt.value;
+                    triggerChangeEvent(selectElement);
+
+                    switch(type) {
+                        case 'batch': highestBatch = highestNumber.toString(); break;
+                        case 'rack': highestRack = highestNumber.toString(); break;
+                        case 'shelf': highestShelf = highestNumber.toString(); break;
+                    }
+                    updateTitle();
+                    return highestNumber;
+                }
+            }
+            return null;
+        }
+
+        async function setLocationToCJA() {
+            const locationSelect = getSelectByLabelText('Location') || document.querySelector('select');
+            if (!locationSelect) return false;
+
+            const options = Array.from(locationSelect.options);
+            const cjaOption = options.find(opt => opt.textContent.toUpperCase().includes('CJA'));
+
+            if (cjaOption) {
+                locationSelect.value = cjaOption.value;
+                triggerChangeEvent(locationSelect);
+                return true;
+            }
+            return false;
+        }
+
+        async function handleManualBatchSelection() {
+            const batchInput = document.getElementById('manual-batch-input');
+            const batchNumber = batchInput ? batchInput.value.trim() : '';
+
+            if (!batchNumber) return;
+
+            await setLocationToCJA();
+
+            const batchSelect = getSelectByLabelText('Batch');
+            if (batchSelect) {
+                await waitForOptions(batchSelect);
+                const options = Array.from(batchSelect.options);
+                const match = options.find(opt => (opt.value || opt.textContent).trim() === batchNumber);
+                if (match) {
+                    batchSelect.value = match.value;
+                    triggerChangeEvent(batchSelect);
+                    highestBatch = batchNumber;
+                    updateTitle();
+                }
+            }
+
+            const rackSelect = getSelectByLabelText('Rack');
+            if (rackSelect) {
+                await waitForOptions(rackSelect);
+                await new Promise(r => setTimeout(r, 400));
+                selectHighestNumber(rackSelect, 'rack');
+            }
+
+            const shelfSelect = getSelectByLabelText('Shelf');
+            if (shelfSelect) {
+                await waitForOptions(shelfSelect);
+                await new Promise(r => setTimeout(r, 400));
+                selectHighestNumber(shelfSelect, 'shelf');
+            }
+        }
+
+        async function handleAutoSelection() {
+            await setLocationToCJA();
+
+            const batchSelect = getSelectByLabelText('Batch');
+            if (batchSelect) {
+                await waitForOptions(batchSelect);
+                await new Promise(r => setTimeout(r, 400));
+                selectHighestNumber(batchSelect, 'batch');
+            }
+
+            const rackSelect = getSelectByLabelText('Rack');
+            if (rackSelect) {
+                await waitForOptions(rackSelect);
+                await new Promise(r => setTimeout(r, 400));
+                selectHighestNumber(rackSelect, 'rack');
+            }
+
+            const shelfSelect = getSelectByLabelText('Shelf');
+            if (shelfSelect) {
+                await waitForOptions(shelfSelect);
+                await new Promise(r => setTimeout(r, 400));
+                selectHighestNumber(shelfSelect, 'shelf');
+            }
+        }
+
+        function selectLocationWiseRadio() {
+            const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+            const locationRadio = radios.find(r => {
+                const label = r.nextElementSibling || r.parentElement;
+                return label && label.textContent.toLowerCase().includes('location wise');
+            });
+
+            if (locationRadio && !locationRadio.checked) {
+                locationRadio.click();
+                triggerChangeEvent(locationRadio);
+            }
+        }
+
+        function addControlPanel() {
+            const panel = document.createElement('div');
+            panel.className = 'control-panel';
+
+            const header = document.createElement('div');
+            header.className = 'control-panel-header';
+            header.innerHTML = '<span class="status-indicator"></span> <span>Weeding Automator</span>';
+            panel.appendChild(header);
+
+            const batchInput = document.createElement('input');
+            batchInput.type = 'text';
+            batchInput.id = 'manual-batch-input';
+            batchInput.placeholder = 'Enter Batch Number';
+            batchInput.addEventListener('keydown', async (e) => {
+                if (e.key === 'Enter') await handleManualBatchSelection();
+            });
+
+            const manualButton = document.createElement('button');
+            manualButton.textContent = 'Select Specific Batch';
+            manualButton.className = 'primary-button';
+            manualButton.onclick = handleManualBatchSelection;
+
+            const autoButton = document.createElement('button');
+            autoButton.textContent = 'Auto-Select Highest Numbers';
+            autoButton.className = 'secondary-button';
+            autoButton.onclick = handleAutoSelection;
+
+            panel.appendChild(batchInput);
+            panel.appendChild(manualButton);
+            panel.appendChild(autoButton);
+            document.body.appendChild(panel);
+        }
+
+        selectLocationWiseRadio();
+        addControlPanel();
+    }
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === '\\' && !scriptActivated) {
+            initScript();
+        }
+    });
+
+    // Activation hint
+    const indicator = document.createElement('div');
+    indicator.style.cssText = `
+        position: fixed;
+        bottom: 10px;
+        right: 10px;
+        background-color: #1e1e1e;
+        color: #888;
+        padding: 6px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        z-index: 9999;
+        border: 1px solid #333;
+    `;
+    indicator.textContent = 'Press \\ to load Automator';
+    document.body.appendChild(indicator);
+
+    setTimeout(() => {
+        indicator.style.transition = 'opacity 1s ease';
+        indicator.style.opacity = '0';
+        setTimeout(() => indicator.remove(), 1000);
+    }, 4000);
+})();
