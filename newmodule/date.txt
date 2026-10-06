@@ -1,0 +1,186 @@
+// ==UserScript==
+// @name         Lightweight High Court Date Picker
+// @namespace    Sajin M. Simon
+// @version      1.7
+// @description  Minimal date picker for High Court interface with Enter key search
+// @author       Sajin M. Simon
+// @match        *://10.145.22.38:3030/rkj-cataloguing/add-catalogue*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    function init() {
+        console.log('Date picker script loaded');
+
+        var btn = document.createElement('button');
+        btn.textContent = '📅';
+        btn.style.cssText = `
+            position: fixed;
+            bottom: 90px;
+            left: 20px;
+            z-index: 9999;
+            padding: 8px 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        `;
+        btn.title = 'Quick Date Picker';
+
+        btn.onclick = function(e) {
+            e.stopPropagation();
+            var old = document.getElementById('quick-dp');
+            if (old) {
+                old.remove();
+                return;
+            }
+
+            var container = document.createElement('div');
+            container.id = 'quick-dp';
+            container.style.cssText = `
+                position: fixed;
+                bottom: 140px;
+                left: 20px;
+                z-index: 10000;
+                background: white;
+                padding: 15px;
+                border-radius: 5px;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+                border: 1px solid #ccc;
+            `;
+
+            var input = document.createElement('input');
+            input.type = 'date';
+            input.style.cssText = 'padding: 5px; border: 1px solid #ccc; border-radius: 3px; margin-bottom: 10px; display: block;';
+
+            var today = new Date().toISOString().split('T')[0];
+            input.max = today;
+            input.value = today;
+
+            var searchBtn = document.createElement('button');
+            searchBtn.textContent = '🔍';
+            searchBtn.style.cssText = `
+                padding: 8px 12px;
+                background: #28a745;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                cursor: pointer;
+                width: 100%;
+            `;
+
+            var closeBtn = document.createElement('button');
+            closeBtn.textContent = '×';
+            closeBtn.style.cssText = `
+                position: absolute;
+                top: 5px;
+                right: 8px;
+                background: none;
+                border: none;
+                font-size: 18px;
+                cursor: pointer;
+                color: #999;
+            `;
+            closeBtn.onclick = () => container.remove();
+
+            container.appendChild(closeBtn);
+            container.appendChild(input);
+            container.appendChild(searchBtn);
+
+            function setNativeValue(element, value) {
+                const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
+                const prototypeSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value')?.set;
+
+                if (prototypeSetter && valueSetter !== prototypeSetter) {
+                    prototypeSetter.call(element, value);
+                } else if (valueSetter) {
+                    valueSetter.call(element, value);
+                } else {
+                    element.value = value;
+                }
+
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+                element.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            function performSearch() {
+                if (!input.value) {
+                    alert('Please select a date');
+                    return;
+                }
+
+                // Ensure "Date wise" mode is checked
+                var dateRadio = document.querySelector('input[type="radio"][value="Date wise"], input[type="radio"][id*="date"]');
+                if (dateRadio && !dateRadio.checked) {
+                    dateRadio.click();
+                }
+
+                setTimeout(() => {
+                    var dateInputs = Array.from(document.querySelectorAll('input[type="date"]')).filter(el => el.id !== 'quick-dp-input');
+
+                    var fromField = dateInputs[0] || document.querySelector('input[name="f_date"], input[name="fromDate"]');
+                    var toField = dateInputs[1] || document.querySelector('input[name="t_date"], input[name="toDate"]');
+
+                    if (fromField || toField) {
+                        var selectedDate = input.value;
+
+                        if (fromField) setNativeValue(fromField, selectedDate);
+                        if (toField) setNativeValue(toField, selectedDate);
+
+                        // Select Location -> 'CJA'
+                        var locationDropdown = document.querySelector('select');
+                        if (locationDropdown) {
+                            var cjaOption = Array.from(locationDropdown.options).find(opt => opt.text.trim().toUpperCase() === 'CJA');
+                            if (cjaOption) {
+                                locationDropdown.value = cjaOption.value;
+                                locationDropdown.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+                        }
+
+                        // Click Submit
+                        setTimeout(() => {
+                            var submitBtn = Array.from(document.querySelectorAll('button')).find(btn =>
+                                btn.textContent.trim().toLowerCase().includes('submit') ||
+                                btn.classList.contains('btn-success')
+                            );
+
+                            if (submitBtn) {
+                                submitBtn.click();
+                            } else if (typeof get_details === 'function') {
+                                get_details();
+                            }
+                            container.remove();
+                        }, 200);
+                    } else {
+                        alert('Could not find date fields on the page');
+                    }
+                }, 100);
+            }
+
+            searchBtn.onclick = performSearch;
+            input.id = 'quick-dp-input';
+            input.onkeydown = function(event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    performSearch();
+                }
+            };
+
+            document.body.appendChild(container);
+            input.focus();
+        };
+
+        document.body.appendChild(btn);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        setTimeout(init, 1000);
+    }
+})();
