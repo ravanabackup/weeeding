@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Weeding Catalogue Report Complete Automator
 // @namespace    Sajin M. Simon
-// @version      2.0
-// @description  Automates selections in weeding catalogue report page with dark mode UI (Press "\" to activate)
+// @version      2.3
+// @description  Automates Location-wise radio, fields, and report submission (Press "\" to activate)
 // @author       Sajin M. Simon
 // @match        *://10.145.22.38:3030/rkj-cataloguing/report*
 // @grant        none
@@ -19,7 +19,6 @@
 
         console.log('Weeding Catalogue Report Automator activated!');
 
-        // Show activation notification
         const activationNotification = document.createElement('div');
         activationNotification.style.cssText = `
             position: fixed;
@@ -54,14 +53,12 @@
             document.title = numbers ? `${YOUR_NAME} - ${numbers}` : YOUR_NAME;
         }
 
-        // Dark mode styles
         const style = document.createElement('style');
         style.textContent = `
             body {
                 background-color: #121212 !important;
                 color: #e0e0e0 !important;
             }
-
             .control-panel {
                 position: fixed;
                 bottom: 20px;
@@ -75,7 +72,6 @@
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 border: 1px solid #333;
             }
-
             .control-panel-header {
                 font-size: 15px;
                 font-weight: 600;
@@ -85,7 +81,6 @@
                 align-items: center;
                 gap: 8px;
             }
-
             .control-panel input {
                 width: 100%;
                 padding: 10px;
@@ -97,7 +92,6 @@
                 font-size: 13px;
                 box-sizing: border-box;
             }
-
             .control-panel button {
                 width: 100%;
                 padding: 10px;
@@ -110,25 +104,20 @@
                 box-sizing: border-box;
                 transition: background-color 0.2s;
             }
-
             .primary-button {
                 background-color: #1976d2 !important;
                 color: white !important;
             }
-
             .primary-button:hover {
                 background-color: #1565c0 !important;
             }
-
             .secondary-button {
                 background-color: #333333 !important;
                 color: #fff !important;
             }
-
             .secondary-button:hover {
                 background-color: #424242 !important;
             }
-
             .status-indicator {
                 width: 8px;
                 height: 8px;
@@ -139,42 +128,52 @@
         `;
         document.head.appendChild(style);
 
-        function getSelectByLabelText(labelText) {
-            const labels = Array.from(document.querySelectorAll('label, span, div'));
-            const targetLabel = labels.find(el => el.textContent.trim().toLowerCase().includes(labelText.toLowerCase()));
-            if (!targetLabel) return null;
-
-            let parent = targetLabel.parentElement;
-            for (let i = 0; i < 3; i++) {
-                if (!parent) break;
-                const select = parent.querySelector('select');
-                if (select) return select;
-                parent = parent.parentElement;
+        function getDropdown(labelText) {
+            const labels = Array.from(document.querySelectorAll('label, span, div, th'));
+            const targetLabel = labels.find(el => el.textContent.trim().toLowerCase().includes(labelText.toLowerCase()) && el.children.length === 0);
+            
+            if (targetLabel) {
+                let parent = targetLabel.parentElement;
+                for (let i = 0; i < 4; i++) {
+                    if (!parent) break;
+                    const select = parent.querySelector('select');
+                    if (select) return select;
+                    parent = parent.parentElement;
+                }
             }
-            return null;
+
+            const selects = Array.from(document.querySelectorAll('select'));
+            if (labelText.toLowerCase().includes('batch')) return selects[1] || selects[0];
+            if (labelText.toLowerCase().includes('rack')) return selects[2] || selects[1];
+            if (labelText.toLowerCase().includes('shelf')) return selects[3] || selects[2];
+            return selects[0];
         }
 
-        function waitForOptions(selectElement) {
+        function waitForOptions(selectElement, minLength = 1) {
             return new Promise(resolve => {
-                if (selectElement && selectElement.options.length > 1) {
-                    return resolve();
+                if (selectElement && selectElement.options.length > minLength) {
+                    return resolve(true);
                 }
-
                 let attempts = 0;
                 const interval = setInterval(() => {
                     attempts++;
-                    if ((selectElement && selectElement.options.length > 1) || attempts > 20) {
+                    if ((selectElement && selectElement.options.length > minLength) || attempts > 35) {
                         clearInterval(interval);
-                        resolve();
+                        resolve(selectElement && selectElement.options.length > minLength);
                     }
-                }, 250);
+                }, 300);
             });
         }
 
-        function triggerChangeEvent(element) {
-            if (!element) return;
-            element.dispatchEvent(new Event('change', { bubbles: true }));
-            element.dispatchEvent(new Event('input', { bubbles: true }));
+        function setSelectValueAndTrigger(selectElement, value) {
+            if (!selectElement) return;
+            selectElement.value = value;
+            ['input', 'change', 'blur', 'keydown', 'keyup'].forEach(eventType => {
+                selectElement.dispatchEvent(new Event(eventType, { bubbles: true, cancelable: true }));
+            });
+            if (window.jQuery) {
+                window.jQuery(selectElement).val(value).trigger('change').trigger('input');
+            }
         }
 
         function selectHighestNumber(selectElement, type) {
@@ -185,106 +184,28 @@
 
             const numbers = options
                 .slice(1)
-                .map(opt => parseInt(opt.value || opt.textContent, 10))
+                .map(opt => parseInt((opt.value || opt.textContent).trim(), 10))
                 .filter(num => !isNaN(num));
 
             if (numbers.length > 0) {
                 const highestNumber = Math.max(...numbers);
-
                 const targetOpt = options.find(opt =>
-                    parseInt(opt.value || opt.textContent, 10) === highestNumber
+                    parseInt((opt.value || opt.textContent).trim(), 10) === highestNumber
                 );
 
                 if (targetOpt) {
-                    selectElement.value = targetOpt.value;
-                    triggerChangeEvent(selectElement);
+                    setSelectValueAndTrigger(selectElement, targetOpt.value);
 
-                    switch(type) {
-                        case 'batch': highestBatch = highestNumber.toString(); break;
-                        case 'rack': highestRack = highestNumber.toString(); break;
-                        case 'shelf': highestShelf = highestNumber.toString(); break;
-                    }
+                    const valStr = highestNumber.toString();
+                    if (type === 'batch') highestBatch = valStr;
+                    if (type === 'rack') highestRack = valStr;
+                    if (type === 'shelf') highestShelf = valStr;
+
                     updateTitle();
                     return highestNumber;
                 }
             }
             return null;
-        }
-
-        async function setLocationToCJA() {
-            const locationSelect = getSelectByLabelText('Location') || document.querySelector('select');
-            if (!locationSelect) return false;
-
-            const options = Array.from(locationSelect.options);
-            const cjaOption = options.find(opt => opt.textContent.toUpperCase().includes('CJA'));
-
-            if (cjaOption) {
-                locationSelect.value = cjaOption.value;
-                triggerChangeEvent(locationSelect);
-                return true;
-            }
-            return false;
-        }
-
-        async function handleManualBatchSelection() {
-            const batchInput = document.getElementById('manual-batch-input');
-            const batchNumber = batchInput ? batchInput.value.trim() : '';
-
-            if (!batchNumber) return;
-
-            await setLocationToCJA();
-
-            const batchSelect = getSelectByLabelText('Batch');
-            if (batchSelect) {
-                await waitForOptions(batchSelect);
-                const options = Array.from(batchSelect.options);
-                const match = options.find(opt => (opt.value || opt.textContent).trim() === batchNumber);
-                if (match) {
-                    batchSelect.value = match.value;
-                    triggerChangeEvent(batchSelect);
-                    highestBatch = batchNumber;
-                    updateTitle();
-                }
-            }
-
-            const rackSelect = getSelectByLabelText('Rack');
-            if (rackSelect) {
-                await waitForOptions(rackSelect);
-                await new Promise(r => setTimeout(r, 400));
-                selectHighestNumber(rackSelect, 'rack');
-            }
-
-            const shelfSelect = getSelectByLabelText('Shelf');
-            if (shelfSelect) {
-                await waitForOptions(shelfSelect);
-                await new Promise(r => setTimeout(r, 400));
-                selectHighestNumber(shelfSelect, 'shelf');
-            }
-        }
-
-        async function handleAutoSelection() {
-            await setLocationToCJA();
-
-            const batchSelect = getSelectByLabelText('Batch');
-            if (batchSelect) {
-                await waitForOptions(batchSelect);
-                await new Promise(r => setTimeout(r, 400));
-                selectHighestNumber(batchSelect, 'batch');
-            }
-
-            const rackSelect = getSelectByLabelText('Rack');
-            if (rackSelect) {
-                await waitForOptions(rackSelect);
-                await new Promise(r => setTimeout(r, 400));
-                selectHighestNumber(rackSelect, 'rack');
-            }
-
-            const shelfSelect = getSelectByLabelText('Shelf');
-            if (shelfSelect) {
-                await waitForOptions(shelfSelect);
-                await new Promise(r => setTimeout(r, 400));
-                selectHighestNumber(shelfSelect, 'shelf');
-            }
         }
 
         function selectLocationWiseRadio() {
@@ -296,11 +217,92 @@
 
             if (locationRadio && !locationRadio.checked) {
                 locationRadio.click();
-                triggerChangeEvent(locationRadio);
+                ['change', 'input'].forEach(ev => locationRadio.dispatchEvent(new Event(ev, { bubbles: true })));
             }
         }
 
+        async function setLocationToCJA() {
+            const locationSelect = getDropdown('Location');
+            if (!locationSelect) return false;
+
+            await waitForOptions(locationSelect, 0);
+            const options = Array.from(locationSelect.options);
+            const cjaOption = options.find(opt => opt.textContent.toUpperCase().includes('CJA'));
+
+            if (cjaOption) {
+                setSelectValueAndTrigger(locationSelect, cjaOption.value);
+                await new Promise(r => setTimeout(r, 800)); 
+                return true;
+            }
+            return false;
+        }
+
+        async function runAutomation(isAuto = true) {
+            // 1. Ensure Location wise radio is checked first
+            selectLocationWiseRadio();
+            await new Promise(r => setTimeout(r, 400));
+
+            // 2. Set Location to CJA
+            await setLocationToCJA();
+
+            // 3. Handle Batch No.
+            const batchSelect = getDropdown('Batch No.');
+            if (batchSelect) {
+                await waitForOptions(batchSelect, 1);
+                if (isAuto) {
+                    selectHighestNumber(batchSelect, 'batch');
+                } else {
+                    const batchInput = document.getElementById('manual-batch-input');
+                    const batchNumber = batchInput ? batchInput.value.trim() : '';
+                    if (batchNumber) {
+                        const options = Array.from(batchSelect.options);
+                        const match = options.find(opt => (opt.value || opt.textContent).trim() === batchNumber);
+                        if (match) {
+                            setSelectValueAndTrigger(batchSelect, match.value);
+                            highestBatch = batchNumber;
+                            updateTitle();
+                        }
+                    }
+                }
+                await new Promise(r => setTimeout(r, 800)); // wait for rack/shelf AJAX cascade
+            }
+
+            // 4. Handle Rack No.
+            const rackSelect = getDropdown('Rack No.');
+            if (rackSelect) {
+                await waitForOptions(rackSelect, 1);
+                selectHighestNumber(rackSelect, 'rack');
+                await new Promise(r => setTimeout(r, 600));
+            }
+
+            // 5. Handle Shelf No.
+            const shelfSelect = getDropdown('Shelf No.');
+            if (shelfSelect) {
+                await waitForOptions(shelfSelect, 0);
+                selectHighestNumber(shelfSelect, 'shelf');
+                await new Promise(r => setTimeout(r, 500));
+            }
+
+            // 6. Click "Cataloguing Report" button automatically
+            const buttons = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"]'));
+            const reportBtn = buttons.find(b => b.textContent.toLowerCase().includes('cataloguing report') || (b.value && b.value.toLowerCase().includes('cataloguing report')));
+            if (reportBtn) {
+                reportBtn.click();
+                console.log('Cataloguing Report button clicked automatically!');
+            }
+        }
+
+        async function handleManualBatchSelection() {
+            await runAutomation(false);
+        }
+
+        async function handleAutoSelection() {
+            await runAutomation(true);
+        }
+
         function addControlPanel() {
+            if (document.querySelector('.control-panel')) return;
+
             const panel = document.createElement('div');
             panel.className = 'control-panel';
 
@@ -313,6 +315,7 @@
             batchInput.type = 'text';
             batchInput.id = 'manual-batch-input';
             batchInput.placeholder = 'Enter Batch Number';
+            batchInput.value = '14688'; 
             batchInput.addEventListener('keydown', async (e) => {
                 if (e.key === 'Enter') await handleManualBatchSelection();
             });
@@ -343,7 +346,6 @@
         }
     });
 
-    // Activation hint
     const indicator = document.createElement('div');
     indicator.style.cssText = `
         position: fixed;
