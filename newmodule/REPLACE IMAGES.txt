@@ -1,0 +1,66 @@
+// ==UserScript==
+// @name         Replace PHHC Emblem and User Icon with Pepe GIFs
+// @namespace    http://tampermonkey.net/
+// @version      1.2
+// @description  Replaces the High Court emblem and user icon with custom GIFs across the RKJ system
+// @match        https://10.145.22.38:3030/*
+// @run-at       document-start
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    const emblemTargetUrl = "https://10.145.22.38:3030/images/phhc-emblem.jpg";
+    const emblemGif = "https://raw.githubusercontent.com/ravanabackup/weeeding/refs/heads/main/pepe-evil-plan-evil-plan.gif";
+    
+    const moneyGif = "https://raw.githubusercontent.com/ravanabackup/weeeding/refs/heads/main/pepe%20MONEY.gif";
+
+    function replaceContent() {
+        // 1. Replace standard emblem <img> tags
+        const images = document.querySelectorAll('img');
+        images.forEach(img => {
+            if (img.src === emblemTargetUrl || img.getAttribute('src') === '/images/phhc-emblem.jpg') {
+                img.src = emblemGif;
+            }
+        });
+
+        // 2. Handle emblem background images (CSS)
+        const allElements = document.querySelectorAll('*');
+        allElements.forEach(el => {
+            const bgImage = window.getComputedStyle(el).backgroundImage;
+            if (bgImage && bgImage.includes('phhc-emblem.jpg')) {
+                el.style.backgroundImage = `url("${emblemGif}")`;
+            }
+        });
+
+        // 3. Replace the user icon div with an image element containing the money GIF
+        const userIcons = document.querySelectorAll('div.image.image-icon.bg-gray-800.text-gray-600');
+        userIcons.forEach(div => {
+            // Check if it hasn't already been replaced
+            if (!div.querySelector('img')) {
+                div.innerHTML = `<img src="${moneyGif}" alt="Pepe Money" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+                // Clean up background/text classes if they interfere with display
+                div.style.background = 'transparent';
+                div.style.padding = '0';
+                div.style.overflow = 'hidden';
+            }
+        });
+    }
+
+    // Run immediately when DOM starts loading
+    replaceContent();
+
+    // Observe future DOM mutations (for dynamically loaded content/SPAs)
+    const observer = new MutationObserver(() => {
+        replaceContent();
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        replaceContent();
+    });
+})();
